@@ -595,7 +595,148 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
-    <script>
+    
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, orderBy, limit, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAnalytics, logEvent } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js";
+
+        // Your Firebase configuration - EDIT THE API KEY ON THE LINE BELOW
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY_HERE",
+            authDomain: "cosmic-racer-7a5e9.firebaseapp.com",
+            projectId: "cosmic-racer-7a5e9",
+            storageBucket: "cosmic-racer-7a5e9.appspot.com",
+            messagingSenderId: "309687236963",
+            appId: "1:309687236963:web:ee7ef6ebdc718854b0fb56"
+        };
+
+        // Firebase initialization code continues here...
+        window.firebaseApp = null;
+        window.db = null;
+        window.auth = null;
+        window.analytics = null;
+        window.userId = null;
+
+        try {
+            window.firebaseApp = initializeApp(firebaseConfig);
+            window.db = getFirestore(window.firebaseApp);
+            window.auth = getAuth(window.firebaseApp);
+            
+            try {
+                window.analytics = getAnalytics(window.firebaseApp);
+                console.log("Firebase Analytics initialized");
+            } catch (analyticsError) {
+                console.log("Analytics not available (normal in localhost)");
+            }
+
+            onAuthStateChanged(window.auth, async (user) => {
+                if (user) {
+                    window.userId = user.uid;
+                    document.getElementById('currentUserId').textContent = window.userId.substring(0, 8) + '...';
+                    console.log("User authenticated:", window.userId);
+                    
+                    if (window.analytics) {
+                        logEvent(window.analytics, 'user_engagement');
+                    }
+                } else {
+                    try {
+                        const userCredential = await signInAnonymously(window.auth);
+                        console.log("Anonymous sign-in successful");
+                    } catch (error) {
+                        console.error("Firebase authentication error:", error);
+                        document.getElementById('currentUserId').textContent = "Auth Error";
+                    }
+                }
+                document.getElementById('userIdDisplay').classList.remove('hidden');
+            });
+
+            console.log("Firebase initialized successfully!");
+
+        } catch (error) {
+            console.error("Firebase initialization error:", error);
+            document.getElementById('currentUserId').textContent = "Firebase Error";
+            document.getElementById('userIdDisplay').classList.remove('hidden');
+        }
+
+        // Firebase helper functions
+        window.logGameEvent = function(eventName, parameters = {}) {
+            if (window.analytics) {
+                try {
+                    logEvent(window.analytics, eventName, parameters);
+                    console.log("Analytics event logged:", eventName, parameters);
+                } catch (error) {
+                    console.log("Analytics event failed:", error);
+                }
+            }
+        };
+
+        window.submitScore = async function(finalScore, waveNumber, shipType) {
+            if (!window.db || !window.userId) {
+                console.log("Firebase not available for score submission");
+                return false;
+            }
+
+            try {
+                const scoresCollection = collection(window.db, 'leaderboard');
+                await addDoc(scoresCollection, {
+                    userId: window.userId,
+                    score: finalScore,
+                    wave: waveNumber,
+                    shipType: shipType,
+                    timestamp: serverTimestamp(),
+                    version: "1.0.0"
+                });
+                console.log("Score submitted successfully!");
+                
+                if (window.analytics) {
+                    logEvent(window.analytics, 'score_submit', {
+                        score: finalScore,
+                        wave: waveNumber,
+                        ship_type: shipType
+                    });
+                }
+                
+                return true;
+            } catch (error) {
+                console.error("Error submitting score:", error);
+                return false;
+            }
+        };
+
+        window.fetchLeaderboard = async function() {
+            if (!window.db) {
+                console.log("Firebase not available for leaderboard");
+                return [];
+            }
+
+            try {
+                const scoresCollection = collection(window.db, 'leaderboard');
+                const q = query(scoresCollection, orderBy("score", "desc"), limit(10));
+                const querySnapshot = await getDocs(q);
+
+                const scores = [];
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    scores.push({
+                        userId: data.userId,
+                        score: data.score,
+                        wave: data.wave || 0,
+                        shipType: data.shipType || 'unknown',
+                        timestamp: data.timestamp
+                    });
+                });
+
+                console.log("Leaderboard fetched:", scores.length, "scores");
+                return scores;
+            } catch (error) {
+                console.error("Error fetching leaderboard:", error);
+                return [];
+            }
+        };
+    </script>
         // Enhanced Game Variables
         let scene, camera, renderer;
         let player, playerType = 'rocket';
